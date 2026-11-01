@@ -1,0 +1,123 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  player
+  admin
+}
+
+enum LedgerEntryType {
+  deposit
+  withdrawal
+  bet
+  payout
+}
+
+enum FraudFlagStatus {
+  open
+  reviewed
+}
+
+model User {
+  id                  String         @id @default(uuid())
+  email               String         @unique
+  password_hash       String
+  role                Role           @default(player)
+  created_at          DateTime       @default(now())
+  self_excluded_until DateTime?
+  cooldown_until      DateTime?
+
+  wallet              Wallet?
+  user_limits         UserLimit?
+  game_rounds         GameRound[]
+  fraud_flags         FraudFlag[]    @relation("UserFraudFlags")
+  reviewed_flags      FraudFlag[]    @relation("AdminReviewedFlags")
+  refresh_tokens      RefreshToken[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id             String          @id @default(uuid())
+  user_id        String          @unique
+  user           User            @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  ledger_entries LedgerEntry[]
+
+  @@map("wallets")
+}
+
+model LedgerEntry {
+  id              String          @id @default(uuid())
+  wallet_id       String
+  wallet          Wallet          @relation(fields: [wallet_id], references: [id], onDelete: Cascade)
+  type            LedgerEntryType
+  amount          Int             // Signed integer: positive for credit, negative for debit
+  reference       String          // Round ID or gateway reference
+  idempotency_key String          @unique
+  created_at      DateTime        @default(now())
+
+  @@index([wallet_id, created_at])
+  @@map("ledger_entries")
+}
+
+model GameRound {
+  id               String   @id @default(uuid())
+  user_id          String
+  user             User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  game_type        String
+  server_seed_hash String
+  server_seed      String?  // Revealed after round finishes
+  client_seed      String
+  nonce            Int
+  bet_amount       Int
+  outcome          Json
+  payout_amount    Int
+  status           String   // e.g., 'started', 'completed'
+  created_at       DateTime @default(now())
+
+  @@index([user_id, created_at])
+  @@map("game_rounds")
+}
+
+model UserLimit {
+  user_id            String   @id
+  user               User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  session_bet_limit  Int      @default(10000)
+  deposit_limit      Int      @default(50000)
+  updated_at         DateTime @updatedAt
+
+  @@map("user_limits")
+}
+
+model FraudFlag {
+  id            String          @id @default(uuid())
+  user_id       String
+  user          User            @relation("UserFraudFlags", fields: [user_id], references: [id], onDelete: Cascade)
+  anomaly_score Float
+  reason        String
+  status        FraudFlagStatus @default(open)
+  reviewed_by   String?
+  reviewer      User?           @relation("AdminReviewedFlags", fields: [reviewed_by], references: [id], onDelete: SetNull)
+  created_at    DateTime        @default(now())
+
+  @@map("fraud_flags")
+}
+
+model RefreshToken {
+  id         String    @id @default(uuid())
+  user_id    String
+  user       User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  token_hash String
+  expires_at DateTime
+  revoked_at DateTime?
+
+  @@index([user_id])
+  @@map("refresh_tokens")
+}
+

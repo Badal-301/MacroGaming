@@ -1,0 +1,58 @@
+services:
+  # Backend Node.js / Express / Socket.io Web Service
+  - type: web
+    name: gaming-platform-backend
+    env: node
+    rootDir: backend
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: gaming-postgres
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: gaming-redis
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_REFRESH_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://gaming-platform-frontend.onrender.com
+
+  # Frontend Next.js Web Service
+  - type: web
+    name: gaming-platform-frontend
+    env: node
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_API_URL
+        fromService:
+          type: web
+          name: gaming-platform-backend
+          property: url
+
+# Managed PostgreSQL Database on Render
+databases:
+  - name: gaming-postgres
+    databaseName: gaming_simulation
+    user: postgres
+    plan: free
+
+# Managed Redis instance on Render
+redis:
+  - name: gaming-redis
+    ipAllowList: [] # internal network only
+    plan: free
+
